@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>可愛海洋碼錶計時器</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js Library for 3D Marine Creatures -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts for rounded cute font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Zen+Maru+Gothic:wght@700;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Fredoka', 'Zen Maru Gothic', sans-serif;
+            background: linear-gradient(180deg, #8be2f8 0%, #3a9fd8 50%, #1c6fae 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+            user-select: none;
+        }
+
+        /* Ambient floating animation for bubbles & sea creatures */
+        @keyframes float-slow {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-8px) rotate(3deg); }
+        }
+
+        @keyframes float-reverse {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(8px) rotate(-3deg); }
+        }
+
+        @keyframes rise-bubble {
+            0% { transform: translateY(100vh) scale(0.5); opacity: 0; }
+            50% { opacity: 0.6; }
+            100% { transform: translateY(-10vh) scale(1.2); opacity: 0; }
+        }
+
+        @keyframes pulse-soft {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.03); }
+        }
+
+        .animate-float {
+            animation: float-slow 4s ease-in-out infinite;
+        }
+
+        .animate-float-del {
+            animation: float-reverse 4.5s ease-in-out infinite 1s;
+        }
+
+        /* Custom bubble elements background */
+        .bubble {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.4);
+            border: 2px solid rgba(255, 255, 255, 0.7);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: rise-bubble linear infinite;
+        }
+
+        /* Thick cartoon border style */
+        .cartoon-border {
+            border: 4px solid #4a3e63;
+        }
+
+        .cartoon-shadow {
+            box-shadow: 0px 8px 0px #34284b;
+        }
+
+        /* Button styles with playful click effect */
+        .btn-cartoon {
+            transition: all 0.1s ease;
+            border: 4px solid #4a3e63;
+            box-shadow: 0px 6px 0px #3a2e50;
+        }
+
+        .btn-cartoon:active:not(:disabled) {
+            transform: translateY(4px);
+            box-shadow: 0px 2px 0px #3a2e50;
+        }
+
+        .btn-cartoon:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: 0px 4px 0px #3a2e50;
+            filter: grayscale(40%);
+        }
+
+        /* Circular Tile Progress Ring */
+        .tile-segment {
+            transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .tile-segment.active {
+            background-color: #ff5288 !important;
+            transform: scale(1.15);
+            box-shadow: 0 0 10px rgba(255, 82, 136, 0.8);
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4 relative min-h-screen">
+
+    <!-- Floating Background Bubbles -->
+    <div id="bubble-container" class="fixed inset-0 pointer-events-none overflow-hidden z-0"></div>
+
+    <!-- Main Container Card (Cream aesthetic matching wireframe) -->
+    <div class="relative w-full max-w-md bg-[#fff7e6] rounded-[40px] cartoon-border cartoon-shadow p-6 sm:p-8 flex flex-col items-center z-10 my-4">
+        
+        <!-- Top Cute Face (.  .) -->
+        <div class="flex items-center space-x-2 mb-2">
+            <div class="w-2.5 h-2.5 bg-[#4a3e63] rounded-full"></div>
+            <div class="w-3 h-1.5 bg-[#ff9bbe] rounded-full my-1"></div>
+            <div class="w-2.5 h-2.5 bg-[#4a3e63] rounded-full"></div>
+        </div>
+
+        <!-- Timer Circle Area -->
+        <div class="relative w-72 h-72 sm:w-80 sm:h-80 flex items-center justify-center my-2">
+            
+            <!-- Circular Ring of Pink Rounded Tiles -->
+            <div id="tile-ring" class="absolute inset-0 w-full h-full pointer-events-none">
+                <!-- Javascript will dynamically place 36 rounded rectangle tiles in a circle -->
+            </div>
+
+            <!-- Digital Time Display -->
+            <div class="z-20 text-center flex flex-col items-center justify-center">
+                <div id="timer-display" class="text-4xl sm:text-5xl font-black text-[#564873] tracking-wider select-text font-mono">
+                    00:00:00
+                </div>
+                <div id="milliseconds-display" class="text-lg font-bold text-[#8c7baf] mt-1 tracking-widest">
+                    00
+                </div>
+            </div>
+
+            <!-- 3D Three.js Canvas Container overlaying around the stopwatch ring -->
+            <div id="canvas-3d-container" class="absolute inset-0 w-full h-full z-30 pointer-events-none"></div>
+
+        </div>
+
+        <!-- BOTTOM BUTTONS PANEL (Strict Flowchart Controlled) -->
+        <div class="w-full flex items-center justify-between gap-4 mt-4 px-2 z-20">
+            <!-- Left Main Action Button (開始 / 暫停 / 繼續) -->
+            <button id="btn-main" class="flex-1 py-3.5 px-4 rounded-2xl bg-[#ff8ca3] text-white font-extrabold text-xl sm:text-2xl tracking-wider btn-cartoon flex items-center justify-center gap-2">
+                <span id="btn-main-text">開始</span>
+            </button>
+
+            <!-- Right Reset Button (重設) -->
+            <button id="btn-reset" disabled class="flex-1 py-3.5 px-4 rounded-2xl bg-[#a393eb] text-white font-extrabold text-xl sm:text-2xl tracking-wider btn-cartoon flex items-center justify-center gap-2">
+                <span>重設</span>
+            </button>
+        </div>
+
+        <!-- Coral & Seabed Decorations at Card Bottom -->
+        <div class="w-full flex justify-between items-end -mb-8 -mx-6 pt-4 pointer-events-none opacity-90">
+            <!-- Left Corals -->
+            <svg viewBox="0 0 100 50" class="w-24 sm:w-28 h-12">
+                <path d="M 10 50 Q 5 20 20 15 Q 30 20 25 50" fill="#a272c7" stroke="#4a3e63" stroke-width="2"/>
+                <path d="M 25 50 Q 25 10 40 8 Q 50 15 42 50" fill="#ff7a38" stroke="#4a3e63" stroke-width="2"/>
+                <path d="M 40 50 Q 45 25 60 20 Q 70 30 55 50" fill="#ff70a6" stroke="#4a3e63" stroke-width="2"/>
+            </svg>
+
+            <!-- Bottom Starfish decoration -->
+            <svg viewBox="0 0 40 40" class="w-8 h-8 mb-1">
+                <path d="M 20 3 L 25 14 L 37 14 L 27 21 L 31 33 L 20 26 L 9 33 L 13 21 L 3 14 L 15 14 Z" fill="#ff9f43" stroke="#4a3e63" stroke-width="2" stroke-linejoin="round"/>
+            </svg>
+
+            <!-- Right Corals -->
+            <svg viewBox="0 0 100 50" class="w-24 sm:w-28 h-12">
+                <path d="M 80 50 Q 95 20 80 15 Q 70 20 75 50" fill="#ff70a6" stroke="#4a3e63" stroke-width="2"/>
+                <path d="M 60 50 Q 60 10 45 8 Q 35 15 43 50" fill="#48dbfb" stroke="#4a3e63" stroke-width="2"/>
+                <path d="M 40 50 Q 35 25 20 20 Q 10 30 25 50" fill="#5f27cd" stroke="#4a3e63" stroke-width="2"/>
+            </svg>
+        </div>
+
+    </div>
+
+    <!-- AUDIO EFFECTS USING WEB AUDIO API (No external assets required) -->
+    <script>
+        // Simple Web Audio API Synthesizer for cute sound effects
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playPop(freq = 600) {
+                try {
+                    this.init();
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(freq * 1.8, this.ctx.currentTime + 0.08);
+                    
+                    gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.08);
+                } catch(e) {}
+            }
+
+            playReset() {
+                try {
+                    this.init();
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.2);
+
+                    gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.2);
+                } catch(e) {}
+            }
+        }
+
+        const sfx = new SoundFX();
+
+        // Generate Background Floating Bubbles
+        const bubbleContainer = document.getElementById('bubble-container');
+        for (let i = 0; i < 15; i++) {
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            const size = Math.random() * 20 + 10;
+            bubble.style.width = `${size}px`;
+            bubble.style.height = `${size}px`;
+            bubble.style.left = `${Math.random() * 100}%`;
+            bubble.style.animationDuration = `${Math.random() * 8 + 6}s`;
+            bubble.style.animationDelay = `${Math.random() * 5}s`;
+            bubbleContainer.appendChild(bubble);
+        }
+
+        // Render Circular Track Tiles
+        const tileRing = document.getElementById('tile-ring');
+        const TOTAL_TILES = 32;
+        const tiles = [];
+
+        function renderTileRing() {
+            tileRing.innerHTML = '';
+            const radius = 125; // radius in px
+            const centerX = 140; // center offset
+            const centerY = 140;
+
+            for (let i = 0; i < TOTAL_TILES; i++) {
+                const angle = (i / TOTAL_TILES) * (2 * Math.PI) - (Math.PI / 2);
+                const x = centerX + radius * Math.cos(angle) - 10;
+                const y = centerY + radius * Math.sin(angle) - 6;
+                const rotateDeg = (i / TOTAL_TILES) * 360;
+
+                const tile = document.createElement('div');
+                tile.className = 'tile-segment absolute w-5 h-3 rounded-sm cartoon-border';
+                tile.style.backgroundColor = '#ffb3c6';
+                tile.style.left = `${x}px`;
+                tile.style.top = `${y}px`;
+                tile.style.transform = `rotate(${rotateDeg}deg)`;
+                
+                tileRing.appendChild(tile);
+                tiles.push(tile);
+            }
+        }
+        renderTileRing();
+
+        /* ============================================================
+           THREE.JS 3D CARTOON MARINE CREATURES SETUP
+           ============================================================ */
+        function init3DMarineCreatures() {
+            const container = document.getElementById('canvas-3d-container');
+            const width = container.clientWidth || 320;
+            const height = container.clientHeight || 320;
+
+            // Scene, Camera, Renderer
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+            camera.position.set(0, 0, 18);
+
+            const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            // Lighting for vibrant toon look
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 15);
+            scene.add(dirLight);
+
+            // Common Toon Materials
+            const matOrange = new THREE.MeshToonMaterial({ color: 0xff6b35 });
+            const matWhite = new THREE.MeshToonMaterial({ color: 0xffffff });
+            const matDark = new THREE.MeshToonMaterial({ color: 0x332542 });
+            const matPurple = new THREE.MeshToonMaterial({ color: 0xba7ce0 });
+            const matPink = new THREE.MeshToonMaterial({ color: 0xff70a6 });
+            const matYellow = new THREE.MeshToonMaterial({ color: 0xffc048 });
+
+            // 1. CLOWNFISH (Top Left)
+            const clownfishGroup = new THREE.Group();
+            // Body
+            const bodyGeo = new THREE.SphereGeometry(1.2, 16, 16);
+            bodyGeo.scale(1.4, 0.9, 0.8);
+            const bodyMesh = new THREE.Mesh(bodyGeo, matOrange);
+            clownfishGroup.add(bodyMesh);
+
+            // Stripes
+            const stripeGeo = new THREE.CylinderGeometry(0.85, 0.85, 0.5, 16);
+            const stripe1 = new THREE.Mesh(stripeGeo, matWhite);
+            stripe1.rotation.z = Math.PI / 2;
+            stripe1.position.x = 0.2;
+            stripe1.scale.set(1.1, 1.2, 0.85);
+            clownfishGroup.add(stripe1);
+
+            // Eyes
+            const eyeGeo = new THREE.SphereGeometry(0.18, 8, 8);
+            const eyeLeft = new THREE.Mesh(eyeGeo, matWhite);
+            eyeLeft.position.set(1.1, 0.2, 0.5);
+            const pupilLeft = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), matDark);
+            pupilLeft.position.set(1.2, 0.2, 0.55);
+            clownfishGroup.add(eyeLeft, pupilLeft);
+
+            // Tail Fin
+            const tailGeo = new THREE.ConeGeometry(0.8, 1, 8);
+            const tailMesh = new THREE.Mesh(tailGeo, matOrange);
+            tailMesh.rotation.z = -Math.PI / 2;
+            tailMesh.position.set(-1.8, 0, 0);
+            clownfishGroup.add(tailMesh);
+
+            clownfishGroup.position.set(-5.5, 5.2, 0);
+            clownfishGroup.scale.set(0.8, 0.8, 0.8);
+            scene.add(clownfishGroup);
+
+            // 2. JELLYFISH (Top Right)
+            const jellyfishGroup = new THREE.Group();
+            // Cap / Dome
+            const domeGeo = new THREE.SphereGeometry(1.2, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55);
+            const domeMesh = new THREE.Mesh(domeGeo, matPurple);
+            domeMesh.rotation.x = Math.PI;
+            jellyfishGroup.add(domeMesh);
+
+            // Eyes on Jellyfish
+            const jEye1 = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), matDark);
+            jEye1.position.set(-0.4, -0.2, 1.05);
+            const jEye2 = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), matDark);
+            jEye2.position.set(0.4, -0.2, 1.05);
+            jellyfishGroup.add(jEye1, jEye2);
+
+            // Tentacles
+            const tentacles = [];
+            for (let i = 0; i < 5; i++) {
+                const tGeo = new THREE.CylinderGeometry(0.06, 0.02, 1.8, 8);
+                const tMesh = new THREE.Mesh(tGeo, matPink);
+                const angle = (i / 5) * Math.PI * 2;
+                tMesh.position.set(Math.cos(angle) * 0.6, -1.0, Math.sin(angle) * 0.6);
+                jellyfishGroup.add(tMesh);
+                tentacles.push(tMesh);
+            }
+
+            jellyfishGroup.position.set(5.5, 5.0, 0);
+            jellyfishGroup.scale.set(0.85, 0.85, 0.85);
+            scene.add(jellyfishGroup);
+
+            // 3. SEAHORSE (Middle Right)
+            const seahorseGroup = new THREE.Group();
+            const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.8, 12, 12), matYellow);
+            headMesh.position.set(0, 1.2, 0);
+            const snoutMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 0.8, 8), matYellow);
+            snoutMesh.rotation.z = Math.PI / 2;
+            snoutMesh.position.set(-0.7, 1.1, 0);
+            
+            const sBodyMesh = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.35, 8, 16, Math.PI * 1.2), matYellow);
+            sBodyMesh.rotation.y = Math.PI / 2;
+            sBodyMesh.position.set(0, 0.1, 0);
+
+            const sEye = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), matDark);
+            sEye.position.set(-0.3, 1.3, 0.6);
+
+            const sFin = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.8, 8), matPink);
+            sFin.position.set(0.6, 0.8, 0);
+            sFin.rotation.z = -Math.PI / 3;
+
+            seahorseGroup.add(headMesh, snoutMesh, sBodyMesh, sEye, sFin);
+            seahorseGroup.position.set(6.2, -0.5, 0);
+            seahorseGroup.scale.set(0.8, 0.8, 0.8);
+            scene.add(seahorseGroup);
+
+            // 4. STARFISH (Bottom Right)
+            const starfishGroup = new THREE.Group();
+            const starShape = new THREE.Shape();
+            const points = 5;
+            for (let i = 0; i < points * 2; i++) {
+                const r = (i % 2 === 0) ? 1.0 : 0.45;
+                const a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+                const px = Math.cos(a) * r;
+                const py = Math.sin(a) * r;
+                if (i === 0) starShape.moveTo(px, py);
+                else starShape.lineTo(px, py);
+            }
+            const extrudeSettings = { depth: 0.3, bevelEnabled: true, bevelSegments: 3, steps: 1, bevelSize: 0.1, bevelThickness: 0.1 };
+            const starGeo = new THREE.ExtrudeGeometry(starShape, extrudeSettings);
+            const starMesh = new THREE.Mesh(starGeo, matPink);
+
+            const stEye1 = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), matDark);
+            stEye1.position.set(-0.2, 0.1, 0.35);
+            const stEye2 = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), matDark);
+            stEye2.position.set(0.2, 0.1, 0.35);
+
+            starfishGroup.add(starMesh, stEye1, stEye2);
+            starfishGroup.position.set(4.8, -5.2, 0);
+            starfishGroup.scale.set(0.8, 0.8, 0.8);
+            scene.add(starfishGroup);
+
+            // Animation Loop
+            let clock = new THREE.Clock();
+
+            function animate3D() {
+                requestAnimationFrame(animate3D);
+                const t = clock.getElapsedTime();
+
+                // Clownfish Swimming Animation
+                clownfishGroup.position.y = 5.2 + Math.sin(t * 2.5) * 0.25;
+                clownfishGroup.position.x = -5.5 + Math.cos(t * 1.5) * 0.2;
+                clownfishGroup.rotation.y = Math.sin(t * 3) * 0.25;
+                clownfishGroup.rotation.z = Math.sin(t * 2) * 0.1;
+                tailMesh.rotation.y = Math.sin(t * 8) * 0.4;
+
+                // Jellyfish Floating & Tentacle Pulse
+                jellyfishGroup.position.y = 5.0 + Math.sin(t * 1.8) * 0.35;
+                jellyfishGroup.rotation.z = Math.sin(t * 1.2) * 0.12;
+                domeMesh.scale.set(1 + Math.sin(t * 3) * 0.08, 1 - Math.sin(t * 3) * 0.08, 1 + Math.sin(t * 3) * 0.08);
+                tentacles.forEach((tent, idx) => {
+                    tent.rotation.z = Math.sin(t * 3 + idx) * 0.2;
+                });
+
+                // Seahorse Bobbing
+                seahorseGroup.position.y = -0.5 + Math.sin(t * 2 + 1) * 0.25;
+                seahorseGroup.rotation.y = Math.sin(t * 1.5) * 0.3;
+                seahorseGroup.rotation.z = Math.cos(t * 2) * 0.1;
+
+                // Starfish Gentle Rotation & Floating
+                starfishGroup.position.y = -5.2 + Math.sin(t * 2 + 2) * 0.2;
+                starfishGroup.rotation.z = Math.sin(t * 1.2) * 0.2;
+                starfishGroup.rotation.y = Math.sin(t * 0.8) * 0.25;
+
+                renderer.render(scene, camera);
+            }
+
+            animate3D();
+
+            // Responsive Window Resize Handler
+            window.addEventListener('resize', () => {
+                const newW = container.clientWidth || 320;
+                const newH = container.clientHeight || 320;
+                camera.aspect = newW / newH;
+                camera.updateProjectionMatrix();
+                renderer.setSize(newW, newH);
+            });
+        }
+
+        // Initialize 3D Scene after Window Load
+        window.addEventListener('load', () => {
+            init3DMarineCreatures();
+        });
+
+        /* ============================================================
+           STATE MACHINE LOGIC IMPLEMENTATION
+           States: 
+           - INDEX (Initial state)
+           - START (Timer Running)
+           - PAUSE (Timer Paused)
+           ============================================================ */
+        
+        const STATE = {
+            INDEX: 'INDEX',
+            START: 'START',
+            PAUSE: 'PAUSE'
+        };
+
+        let currentState = STATE.INDEX;
+        let startTime = 0;
+        let elapsedTime = 0;
+        let timerInterval = null;
+
+        // DOM Elements
+        const btnMain = document.getElementById('btn-main');
+        const btnMainText = document.getElementById('btn-main-text');
+        const btnReset = document.getElementById('btn-reset');
+        const timerDisplay = document.getElementById('timer-display');
+        const msDisplay = document.getElementById('milliseconds-display');
+
+        // Format time helper function
+        function updateDisplay(timeMs) {
+            const totalSeconds = Math.floor(timeMs / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            const ms = Math.floor((timeMs % 1000) / 10);
+
+            const hh = String(hours).padStart(2, '0');
+            const mm = String(minutes).padStart(2, '0');
+            const ss = String(seconds).padStart(2, '0');
+            const mss = String(ms).padStart(2, '0');
+
+            timerDisplay.textContent = `${hh}:${mm}:${ss}`;
+            msDisplay.textContent = mss;
+
+            // Highlight ring tiles sequentially based on seconds/time
+            const activeIndex = Math.floor((timeMs / 100) % TOTAL_TILES);
+            tiles.forEach((tile, idx) => {
+                if (idx === activeIndex) {
+                    tile.classList.add('active');
+                } else {
+                    tile.classList.remove('active');
+                }
+            });
+        }
+
+        // State Machine Transition Handler
+        function transitionTo(newState) {
+            currentState = newState;
+
+            switch (currentState) {
+                case STATE.INDEX:
+                    // Reset variables
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                    elapsedTime = 0;
+                    
+                    // UI Updates according to Flowchart:
+                    // - 左按鈕「開始」 [Pink background]
+                    // - 右按鈕「重設」 disabled
+                    btnMainText.textContent = '開始';
+                    btnMain.className = "flex-1 py-3.5 px-4 rounded-2xl bg-[#ff8ca3] text-white font-extrabold text-xl sm:text-2xl tracking-wider btn-cartoon flex items-center justify-center gap-2";
+                    
+                    btnReset.disabled = true;
+                    
+                    updateDisplay(0);
+                    break;
+
+                case STATE.START:
+                    // Start or Resume Timer
+                    startTime = Date.now() - elapsedTime;
+                    clearInterval(timerInterval);
+                    timerInterval = setInterval(() => {
+                        elapsedTime = Date.now() - startTime;
+                        updateDisplay(elapsedTime);
+                    }, 10);
+
+                    // UI Updates according to Flowchart:
+                    // - 左按鈕「開始」或「繼續」變成「暫停」
+                    // - 右按鈕「重設」 enabled
+                    btnMainText.textContent = '暫停';
+                    btnMain.className = "flex-1 py-3.5 px-4 rounded-2xl bg-[#ff70a6] text-white font-extrabold text-xl sm:text-2xl tracking-wider btn-cartoon flex items-center justify-center gap-2";
+
+                    btnReset.disabled = false;
+                    break;
+
+                case STATE.PAUSE:
+                    // Pause Timer
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+
+                    // UI Updates according to Flowchart:
+                    // - 左按鈕「暫停」變成「繼續」
+                    // - 右按鈕「重設」 remains enabled
+                    btnMainText.textContent = '繼續';
+                    btnMain.className = "flex-1 py-3.5 px-4 rounded-2xl bg-[#70a6ff] text-white font-extrabold text-xl sm:text-2xl tracking-wider btn-cartoon flex items-center justify-center gap-2";
+
+                    btnReset.disabled = false;
+                    break;
+            }
+        }
+
+        // EVENT LISTENERS
+
+        // Click Left Main Action Button
+        btnMain.addEventListener('click', () => {
+            sfx.playPop(700);
+            if (currentState === STATE.INDEX) {
+                // ClickStart -> Start
+                transitionTo(STATE.START);
+            } else if (currentState === STATE.START) {
+                // ClickPause -> Pause
+                transitionTo(STATE.PAUSE);
+            } else if (currentState === STATE.PAUSE) {
+                // ClickContinue -> Start
+                transitionTo(STATE.START);
+            }
+        });
+
+        // Click Right Reset Button (ClickReset -> Index)
+        btnReset.addEventListener('click', () => {
+            if (!btnReset.disabled) {
+                sfx.playReset();
+                transitionTo(STATE.INDEX);
+            }
+        });
+
+        // Initialize directly into INDEX state
+        transitionTo(STATE.INDEX);
+
+    </script>
+</body>
+</html>
